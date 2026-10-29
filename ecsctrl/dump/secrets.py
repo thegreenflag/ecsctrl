@@ -68,18 +68,21 @@ def dump_secrets(
 def render_dumped_secrets(
     click, secrets: Sequence[Parameter], vars_lut, target_file, simple=False
 ):
-    chunks = []
-    dumped = []
-    for parameter in secrets:
-        key, secret_text = rended_single_secret(parameter, vars_lut, simple)
-        chunks.append(f"# Dumped from `{parameter.name}`:\n{secret_text}\n")
-        dumped.append((parameter.name, key))
+    f = None
+    try:
+        for parameter in secrets:
+            key, secret_text = rended_single_secret(parameter, vars_lut, simple)
+            if f is None:
+                f = open(target_file, "w")
+            f.write(f"# Dumped from `{parameter.name}`:\n{secret_text}\n")
+            f.flush()
+            click.echo(f"🔑 Dumped secret {parameter.name} as {key}.")
 
-    with open(target_file, "w") as f:
-        f.write("".join(chunks))
-
-    for name, key in dumped:
-        click.echo(f"🔑 Dumped secret {name} as {key}.")
+        if f is None:
+            open(target_file, "w").close()
+    finally:
+        if f is not None:
+            f.close()
 
 
 def rended_single_secret(parameter: Parameter, vars_lut, simple=False):

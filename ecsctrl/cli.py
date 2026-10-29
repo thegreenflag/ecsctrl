@@ -379,7 +379,7 @@ def dump(
     except SecretFetchError as e:
         raise click.ClickException(
             f"{e.name}: {e.cause}\n"
-            f"File {spec_file} was not written. "
+            f"Secrets fetched before the failure were already written to {spec_file}. "
             "Use --skip-errors to skip secrets that fail to be fetched."
         )
     except (BotoCoreError, ClientError) as e:

@@ -58,7 +58,8 @@ def test_dump_fails_fast_by_default(boto_mock, tmp_path):
     assert "/b" in result.stderr
     assert "AccessDeniedException" in result.stderr
     assert "Traceback" not in result.stderr
-    assert not target.exists()
+    assert "/a: value/a" in target.read_text()
+    assert "/c" not in target.read_text()
 
 
 @mock.patch("boto3.client")
@@ -247,14 +248,15 @@ def test_dump_simple_output_can_be_loaded_back(boto_mock, tmp_path):
 
 
 @mock.patch("boto3.client")
-def test_dump_failure_does_not_report_secrets_as_dumped(boto_mock, tmp_path):
+def test_dump_failure_reports_only_written_secrets(boto_mock, tmp_path):
     boto_mock.return_value = make_ssm_mock(failing=["/b"])
 
     result, target = invoke(tmp_path)
 
     assert result.exit_code == 1
-    assert not target.exists()
-    assert "Dumped" not in result.stdout
+    assert "Dumped secret /a as /a." in result.stdout
+    assert "/b" not in result.stdout
+    assert "/c" not in result.stdout
 
 
 @mock.patch("boto3.client")
@@ -264,7 +266,7 @@ def test_dump_failure_hints_at_skip_errors(boto_mock, tmp_path):
     result, target = invoke(tmp_path)
 
     assert "--skip-errors" in result.stderr
-    assert "not written" in result.stderr
+    assert "already written" in result.stderr
 
 
 @mock.patch("boto3.client")
@@ -276,3 +278,70 @@ def test_dump_reports_secrets_after_writing_file(boto_mock, tmp_path):
     assert result.exit_code == 0
     assert "Dumped secret /a as /a." in result.stdout
     assert "Dumped secret /c as /c." in result.stdout
+
+
+@mock.patch("boto3.client")
+def test_dump_writes_file_live(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    target = tmp_path / "secrets.yaml"
+    seen = {}
+    original = ssm.get_parameter.side_effect
+
+    def get_parameter(Name, WithDecryption):
+        seen[Name] = target.read_text() if target.exists() else None
+        return original(Name=Name, WithDecryption=WithDecryption)
+
+    ssm.get_parameter.side_effect = get_parameter
+    boto_mock.return_value = ssm
+
+    result, _ = invoke(tmp_path)
+
+    assert result.exit_code == 0
+    assert seen["/a"] is None
+    assert "/a: value/a" in seen["/b"]
+    assert "/b" not in seen["/b"]
+    assert "/b: value/b" in seen["/c"]
+
+
+@mock.patch("boto3.client")
+def test_dump_keeps_secrets_written_before_interruption(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    original = ssm.get_parameter.side_effect
+
+    def get_parameter(Name, WithDecryption):
+        if Name == "/c":
+            raise KeyboardInterrupt()
+        return original(Name=Name, WithDecryption=WithDecryption)
+
+    ssm.get_parameter.side_effect = get_parameter
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path)
+
+    content = target.read_text()
+    assert "/a: value/a" in content
+    assert "/b: value/b" in content
+
+
+@mock.patch("boto3.client")
+def test_dump_listing_failure_leaves_existing_file_untouched(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    ssm.describe_parameters.side_effect = client_error("DescribeParameters")
+    boto_mock.return_value = ssm
+    target = tmp_path / "secrets.yaml"
+    target.write_text("old content")
+
+    result, _ = invoke(tmp_path)
+
+    assert result.exit_code == 1
+    assert target.read_text() == "old content"
+
+
+@mock.patch("boto3.client")
+def test_dump_without_matches_creates_empty_file(boto_mock, tmp_path):
+    boto_mock.return_value = make_ssm_mock()
+
+    result, target = invoke(tmp_path, "--filter", "nomatch")
+
+    assert result.exit_code == 0
+    assert target.read_text() == ""
