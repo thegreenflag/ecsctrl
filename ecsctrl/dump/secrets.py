@@ -1,4 +1,5 @@
 import re
+from botocore.exceptions import BotoCoreError, ClientError
 from . import substitute_with_expressions
 from dataclasses import dataclass
 from typing import Generator, Optional, Sequence
@@ -28,15 +29,29 @@ def list_secrets(ssm):
             yield parameter
 
 
-def dump_secrets(ssm, filter=None) -> Generator[Parameter, None, None]:
+class SecretFetchError(Exception):
+    def __init__(self, name, cause):
+        super().__init__(f"Failed to fetch {name}: {cause}")
+        self.name = name
+        self.cause = cause
+
+
+def dump_secrets(ssm, filter=None, on_error=None) -> Generator[Parameter, None, None]:
     for parameter in list_secrets(ssm):
         parameter_name = parameter["Name"]
         if filter is None or re.match(filter, parameter_name):
-            response = ssm.call(
-                "get_parameter",
-                Name=parameter_name,
-                WithDecryption=True,
-            )
+            try:
+                response = ssm.call(
+                    "get_parameter",
+                    Name=parameter_name,
+                    WithDecryption=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                error = SecretFetchError(parameter_name, e)
+                if on_error is None:
+                    raise error from e
+                on_error(error)
+                continue
 
             yield Parameter(
                 name=parameter_name,
@@ -47,13 +62,14 @@ def dump_secrets(ssm, filter=None) -> Generator[Parameter, None, None]:
 
 
 def render_dumped_secrets(click, secrets: Sequence[Parameter], vars_lut, target_file):
+    chunks = []
+    for parameter in secrets:
+        key, secret_text = rended_single_secret(parameter, vars_lut)
+        chunks.append(f"# Dumped from `{parameter.name}`:\n{secret_text}\n")
+        click.echo(f"🔑 Dumped secret {parameter.name} as {key}.")
+
     with open(target_file, "w") as f:
-        for parameter in secrets:
-            key, secret_text = rended_single_secret(parameter, vars_lut)
-            f.write(f"# Dumped from `{parameter.name}`:\n")
-            f.write(secret_text)
-            f.write(f"\n")
-            click.echo(f"🔑 Dumped secret {parameter.name} as {key}.")
+        f.write("".join(chunks))
 
 
 def rended_single_secret(parameter: Parameter, vars_lut):

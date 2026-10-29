@@ -3,12 +3,13 @@ import re
 from email.policy import default
 
 import click
+from botocore.exceptions import BotoCoreError, ClientError
 
 from ecsctrl.loader import VarsLoader
 
 from .boto_client import BotoClient
 from .dump import generate_var_lut
-from .dump.secrets import dump_secrets, render_dumped_secrets
+from .dump.secrets import SecretFetchError, dump_secrets, render_dumped_secrets
 from .service_updater import ServiceUpdater, TaskDefinitionServiceUpdater, WaitForUpdate
 from .yaml_converter import (
     JOB_DEFINITION,
@@ -330,12 +331,19 @@ def store(
     default=None,
     help="Export only secrets matching given regexp pattern",
 )
+@click.option(
+    "--skip-errors",
+    is_flag=True,
+    default=False,
+    help="Skip secrets that fail to be fetched (reported on stderr) instead of aborting",
+)
 @common_options
 @click.pass_context
 def dump(
     ctx,
     spec_file,
     filter,
+    skip_errors,
     env_file,
     json_file,
     var,
@@ -345,8 +353,17 @@ def dump(
     vars = VarsLoader(env_file, var, json_file, sys_env).load()
     var_lut = generate_var_lut(vars)
     ssm = BotoClient("ssm", dry_run=ctx.obj["boto_client"].dry_run)
-    secrets = dump_secrets(ssm, filter)
-    render_dumped_secrets(click, secrets, var_lut, spec_file)
+
+    def on_error(error):
+        click.echo(f"⚠️ Skipping {error.name}: {error.cause}", err=True)
+
+    secrets = dump_secrets(ssm, filter, on_error if skip_errors else None)
+    try:
+        render_dumped_secrets(click, secrets, var_lut, spec_file)
+    except SecretFetchError as e:
+        raise click.ClickException(f"{e.name}: {e.cause}")
+    except (BotoCoreError, ClientError) as e:
+        raise click.ClickException(f"Failed to list secrets: {e}")
 
 
 @service.command()

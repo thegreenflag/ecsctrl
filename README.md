@@ -199,3 +199,9 @@ Dump secrets from SSM parameter store. You can optionally filter params by name 
 ```bash
 ecsctrl secrets dump -e production.env --filter "db_.*" secrets.yaml
 ```
+
+By default the dump aborts on the first parameter that fails to be fetched (e.g. access denied) and does not write the output file. Use `--skip-errors` to skip such parameters instead - each skipped parameter is reported on stderr.
+
+```bash
+ecsctrl secrets dump -e production.env --skip-errors secrets.yaml
+```
