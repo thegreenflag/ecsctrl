@@ -244,3 +244,35 @@ def test_dump_simple_output_can_be_loaded_back(boto_mock, tmp_path):
         "/described": "d",
         "/multiline": "l1\nl2",
     }
+
+
+@mock.patch("boto3.client")
+def test_dump_failure_does_not_report_secrets_as_dumped(boto_mock, tmp_path):
+    boto_mock.return_value = make_ssm_mock(failing=["/b"])
+
+    result, target = invoke(tmp_path)
+
+    assert result.exit_code == 1
+    assert not target.exists()
+    assert "Dumped" not in result.stdout
+
+
+@mock.patch("boto3.client")
+def test_dump_failure_hints_at_skip_errors(boto_mock, tmp_path):
+    boto_mock.return_value = make_ssm_mock(failing=["/b"])
+
+    result, target = invoke(tmp_path)
+
+    assert "--skip-errors" in result.stderr
+    assert "not written" in result.stderr
+
+
+@mock.patch("boto3.client")
+def test_dump_reports_secrets_after_writing_file(boto_mock, tmp_path):
+    boto_mock.return_value = make_ssm_mock()
+
+    result, target = invoke(tmp_path)
+
+    assert result.exit_code == 0
+    assert "Dumped secret /a as /a." in result.stdout
+    assert "Dumped secret /c as /c." in result.stdout

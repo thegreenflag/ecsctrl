@@ -377,7 +377,11 @@ def dump(
     try:
         render_dumped_secrets(click, secrets, var_lut, spec_file, simple)
     except SecretFetchError as e:
-        raise click.ClickException(f"{e.name}: {e.cause}")
+        raise click.ClickException(
+            f"{e.name}: {e.cause}\n"
+            f"File {spec_file} was not written. "
+            "Use --skip-errors to skip secrets that fail to be fetched."
+        )
     except (BotoCoreError, ClientError) as e:
         raise click.ClickException(f"Failed to list secrets: {e}")
 
