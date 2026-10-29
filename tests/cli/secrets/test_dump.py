@@ -181,3 +181,66 @@ def test_dump_start_from_across_pages(boto_mock, tmp_path):
     assert "/b: value/b" in content
     assert "/c: value/c" in content
     assert ssm.describe_parameters.call_count == 2
+
+
+def make_mixed_ssm_mock():
+    ssm = mock.Mock()
+    ssm.describe_parameters.return_value = {
+        "Parameters": [
+            {"Name": "/plain"},
+            {"Name": "/described", "Description": "some description"},
+            {"Name": "/multiline"},
+        ]
+    }
+    values = {
+        "/plain": {"Value": "p", "Type": "String"},
+        "/described": {"Value": "d", "Type": "SecureString"},
+        "/multiline": {"Value": "l1\nl2", "Type": "StringList"},
+    }
+    ssm.get_parameter.side_effect = lambda Name, WithDecryption: {
+        "Parameter": values[Name]
+    }
+    return ssm
+
+
+@mock.patch("boto3.client")
+def test_dump_default_keeps_complex_format(boto_mock, tmp_path):
+    boto_mock.return_value = make_mixed_ssm_mock()
+
+    result, target = invoke(tmp_path)
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/plain:\n  Type: String\n  Value: p\n" in content
+    assert "Description: some description" in content
+
+
+@mock.patch("boto3.client")
+def test_dump_simple(boto_mock, tmp_path):
+    boto_mock.return_value = make_mixed_ssm_mock()
+
+    result, target = invoke(tmp_path, "--simple")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/plain: p\n" in content
+    assert "/described: d\n" in content
+    assert "/multiline: |-\n  l1\n  l2\n" in content
+    assert "Type:" not in content
+    assert "Value:" not in content
+    assert "Description:" not in content
+
+
+@mock.patch("boto3.client")
+def test_dump_simple_output_can_be_loaded_back(boto_mock, tmp_path):
+    from ecsctrl.yaml_converter import SECRETS, yaml_to_dict
+
+    boto_mock.return_value = make_mixed_ssm_mock()
+
+    result, target = invoke(tmp_path, "--simple")
+
+    assert yaml_to_dict(target.read_text(), SECRETS) == {
+        "/plain": "p",
+        "/described": "d",
+        "/multiline": "l1\nl2",
+    }

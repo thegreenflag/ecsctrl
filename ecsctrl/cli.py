@@ -338,6 +338,12 @@ def store(
     help="Export only secrets whose names are alphabetically equal to or after given value",
 )
 @click.option(
+    "--simple",
+    is_flag=True,
+    default=False,
+    help="Write every secret as `key: value`, omitting its type and description",
+)
+@click.option(
     "--skip-errors",
     is_flag=True,
     default=False,
@@ -350,6 +356,7 @@ def dump(
     spec_file,
     filter,
     start_from,
+    simple,
     skip_errors,
     env_file,
     json_file,
@@ -368,7 +375,7 @@ def dump(
         ssm, filter, on_error if skip_errors else None, start_from=start_from
     )
     try:
-        render_dumped_secrets(click, secrets, var_lut, spec_file)
+        render_dumped_secrets(click, secrets, var_lut, spec_file, simple)
     except SecretFetchError as e:
         raise click.ClickException(f"{e.name}: {e.cause}")
     except (BotoCoreError, ClientError) as e:

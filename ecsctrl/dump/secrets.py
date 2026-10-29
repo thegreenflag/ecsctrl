@@ -65,10 +65,12 @@ def dump_secrets(
             )
 
 
-def render_dumped_secrets(click, secrets: Sequence[Parameter], vars_lut, target_file):
+def render_dumped_secrets(
+    click, secrets: Sequence[Parameter], vars_lut, target_file, simple=False
+):
     chunks = []
     for parameter in secrets:
-        key, secret_text = rended_single_secret(parameter, vars_lut)
+        key, secret_text = rended_single_secret(parameter, vars_lut, simple)
         chunks.append(f"# Dumped from `{parameter.name}`:\n{secret_text}\n")
         click.echo(f"🔑 Dumped secret {parameter.name} as {key}.")
 
@@ -76,10 +78,10 @@ def render_dumped_secrets(click, secrets: Sequence[Parameter], vars_lut, target_
         f.write("".join(chunks))
 
 
-def rended_single_secret(parameter: Parameter, vars_lut):
+def rended_single_secret(parameter: Parameter, vars_lut, simple=False):
     name = parameter.name
     key = substitute_with_expressions(name, vars_lut)
-    if parameter.type == "SecureString" and parameter.description is None:
+    if simple or (parameter.type == "SecureString" and parameter.description is None):
         secret_text = render_simple_secret(key, parameter)
     else:
         secret_text = render_complex_secret(key, parameter)

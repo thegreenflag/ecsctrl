@@ -211,3 +211,9 @@ Use `--start-from` to dump only parameters whose names are alphabetically equal 
 ```bash
 ecsctrl secrets dump -e production.env --start-from "/prod/db" secrets.yaml
 ```
+
+By default only `SecureString` parameters without a description are written as `name: value`; the others include their `Type` and `Description`. Use `--simple` to write every parameter as `name: value`. Note that the type and description are not kept, so storing such a file creates all parameters as `SecureString`s.
+
+```bash
+ecsctrl secrets dump -e production.env --simple secrets.yaml
+```
