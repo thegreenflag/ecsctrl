@@ -205,3 +205,9 @@ By default the dump aborts on the first parameter that fails to be fetched (e.g.
 ```bash
 ecsctrl secrets dump -e production.env --skip-errors secrets.yaml
 ```
+
+Use `--start-from` to dump only parameters whose names are alphabetically equal to or after the given value (e.g. to resume after a failure). It can be combined with `--filter`.
+
+```bash
+ecsctrl secrets dump -e production.env --start-from "/prod/db" secrets.yaml
+```

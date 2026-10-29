@@ -36,9 +36,13 @@ class SecretFetchError(Exception):
         self.cause = cause
 
 
-def dump_secrets(ssm, filter=None, on_error=None) -> Generator[Parameter, None, None]:
+def dump_secrets(
+    ssm, filter=None, on_error=None, start_from=None
+) -> Generator[Parameter, None, None]:
     for parameter in list_secrets(ssm):
         parameter_name = parameter["Name"]
+        if start_from is not None and parameter_name < start_from:
+            continue
         if filter is None or re.match(filter, parameter_name):
             try:
                 response = ssm.call(

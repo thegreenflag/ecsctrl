@@ -332,6 +332,12 @@ def store(
     help="Export only secrets matching given regexp pattern",
 )
 @click.option(
+    "--start-from",
+    type=str,
+    default=None,
+    help="Export only secrets whose names are alphabetically equal to or after given value",
+)
+@click.option(
     "--skip-errors",
     is_flag=True,
     default=False,
@@ -343,6 +349,7 @@ def dump(
     ctx,
     spec_file,
     filter,
+    start_from,
     skip_errors,
     env_file,
     json_file,
@@ -357,7 +364,9 @@ def dump(
     def on_error(error):
         click.echo(f"⚠️ Skipping {error.name}: {error.cause}", err=True)
 
-    secrets = dump_secrets(ssm, filter, on_error if skip_errors else None)
+    secrets = dump_secrets(
+        ssm, filter, on_error if skip_errors else None, start_from=start_from
+    )
     try:
         render_dumped_secrets(click, secrets, var_lut, spec_file)
     except SecretFetchError as e:

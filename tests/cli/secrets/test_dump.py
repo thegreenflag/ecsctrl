@@ -89,3 +89,45 @@ def test_dump_list_failure_is_fatal_even_with_skip_errors(boto_mock, tmp_path):
     assert "AccessDeniedException" in result.stderr
     assert "Traceback" not in result.stderr
     assert not target.exists()
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path, "--start-from", "/b")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/a" not in content
+    assert "/b: value/b" in content
+    assert "/c: value/c" in content
+    fetched = [c.kwargs["Name"] for c in ssm.get_parameter.call_args_list]
+    assert fetched == ["/b", "/c"]
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from_between_names(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path, "--start-from", "/aa")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/a:" not in content
+    assert "/b: value/b" in content
+    assert "/c: value/c" in content
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from_with_filter(boto_mock, tmp_path):
+    boto_mock.return_value = make_ssm_mock()
+
+    result, target = invoke(tmp_path, "--start-from", "/b", "--filter", "/c")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/b" not in content
+    assert "/c: value/c" in content
