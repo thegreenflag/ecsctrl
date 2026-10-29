@@ -131,3 +131,53 @@ def test_dump_start_from_with_filter(boto_mock, tmp_path):
     assert result.exit_code == 0
     assert "/b" not in content
     assert "/c: value/c" in content
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from_with_skip_errors(boto_mock, tmp_path):
+    ssm = make_ssm_mock(failing=["/a", "/b"])
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path, "--start-from", "/b", "--skip-errors")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/c: value/c" in content
+    assert "/a" not in result.stderr
+    assert "/b" in result.stderr
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from_with_unsorted_listing(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    ssm.describe_parameters.return_value = {
+        "Parameters": [{"Name": "/c"}, {"Name": "/a"}, {"Name": "/b"}]
+    }
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path, "--start-from", "/b")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/a" not in content
+    assert "/b: value/b" in content
+    assert "/c: value/c" in content
+
+
+@mock.patch("boto3.client")
+def test_dump_start_from_across_pages(boto_mock, tmp_path):
+    ssm = make_ssm_mock()
+    ssm.describe_parameters.side_effect = [
+        {"Parameters": [{"Name": "/a"}], "NextToken": "t"},
+        {"Parameters": [{"Name": "/b"}, {"Name": "/c"}]},
+    ]
+    boto_mock.return_value = ssm
+
+    result, target = invoke(tmp_path, "--start-from", "/b")
+
+    content = target.read_text()
+    assert result.exit_code == 0
+    assert "/a" not in content
+    assert "/b: value/b" in content
+    assert "/c: value/c" in content
+    assert ssm.describe_parameters.call_count == 2
